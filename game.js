@@ -1,17 +1,16 @@
 import * as THREE from 'three';
-import { PAL, FLOCK_PERCH_KINDS, FOLD_UP, FOLD_LO } from "./classes/data.js"
+import { PAL, FLOCK_PERCH_KINDS, FOLD_UP, FOLD_LO, FLY } from "./js/data/data.js";
+import Pigeon from './js/objects/Pigeon.js';
+import { makeCanvas } from './js/utils/utils.js';
+import Banner, { BannerTextures } from './js/textures/BannerTexture.js';
+import SoundFX from './js/audio/SoundFX.js';
+import { buildPerson } from './js/objects/Person.js';
 
 /* ============================================================
    WORLD — 밝은 하늘 / 칙칙한 도시
    ============================================================ */
 
 /* ---------- 절차적 텍스처 ---------- */
-function makeCanvas(w, h) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  return [c, c.getContext('2d')];
-}
-
 function noiseOverlay(ctx, w, h, amount, alpha) {
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
@@ -269,9 +268,7 @@ function buildWorld(scene) {
     color: 0x5E7686, roughness: 0.09, metalness: 0.88,
     envMap: env, envMapIntensity: 1.0
   });
-  const windowMat = new THREE.MeshStandardMaterial({
-    color: 0x4A5560, roughness: 0.35, metalness: 0.5, envMap: env, envMapIntensity: 0.55
-  });
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0x4A5560, roughness: 0.35, metalness: 0.5, envMap: env, envMapIntensity: 0.55 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x55504A, roughness: 0.8 });
 
   function addBuilding(cx, cz, w, d, h, faceHex, facing) {
@@ -453,15 +450,15 @@ function buildWorld(scene) {
 
   const F = (x, z) => new THREE.Vector3(x, 0, z);
   addBuilding(-30, -36, 26, 16, 21, PAL.facadeA, F(0, 1));
-  addBuilding(  0, -38, 22, 16, 27, PAL.facadeB, F(0, 1));
-  addBuilding( 28, -35, 24, 16, 17, PAL.facadeC, F(0, 1));
-  addBuilding(-47,  -6, 16, 30, 24, PAL.facadeB, F(1, 0));
-  addBuilding(-47,  22, 16, 22, 15, PAL.facadeC, F(1, 0));
-  addBuilding( 47,  -8, 16, 32, 19, PAL.facadeA, F(-1, 0));
-  addBuilding( 47,  24, 16, 22, 26, PAL.facadeB, F(-1, 0));
+  addBuilding(0, -38, 22, 16, 27, PAL.facadeB, F(0, 1));
+  addBuilding(28, -35, 24, 16, 17, PAL.facadeC, F(0, 1));
+  addBuilding(-47, -6, 16, 30, 24, PAL.facadeB, F(1, 0));
+  addBuilding(-47, 22, 16, 22, 15, PAL.facadeC, F(1, 0));
+  addBuilding(47, -8, 16, 32, 19, PAL.facadeA, F(-1, 0));
+  addBuilding(47, 24, 16, 22, 26, PAL.facadeB, F(-1, 0));
   // 도로 건너편
   addBuilding(-24, 52, 30, 16, 23, PAL.facadeC, F(0, -1));
-  addBuilding( 18, 54, 28, 16, 18, PAL.facadeA, F(0, -1));
+  addBuilding(18, 54, 28, 16, 18, PAL.facadeA, F(0, -1));
 
   /* ---------- 가로등 + 전선 ---------- */
   const poleMat = new THREE.MeshStandardMaterial({ color: PAL.metal, roughness: 0.6, metalness: 0.6 });
@@ -663,125 +660,20 @@ function buildWorld(scene) {
   }
 
   /* ---------- 현수막 배치 ---------- */
-  addBanner(scene, W, -19, 1.55, 25.4, Math.PI, 4.4, 0, true);
-  addBanner(scene, W, 13, 1.55, 25.4, Math.PI, 4.4, 1, true);
-  addBanner(scene, W, -36, 1.55, 16.5, Math.PI + 0.6, 4.4, 2, true);
-  addBanner(scene, W, -30, 4.05, -27.58, 0, 6.0, 2, false);
-  addBanner(scene, W, 28, 4.05, -26.58, 0, 6.0, 0, false);
-  addBanner(scene, W, -38.58, 4.05, 8, Math.PI / 2, 6.0, 1, false);
-  addBanner(scene, W, 38.58, 4.05, -4, -Math.PI / 2, 6.0, 2, false);
+  [
+    [-19, 1.55, 25.4, Math.PI, 4.4, 0, true],
+    [13, 1.55, 25.4, Math.PI, 4.4, 1, true],
+    [-36, 1.55, 16.5, Math.PI + 0.6, 4.4, 2, true],
+    [-30, 4.05, -27.58, 0, 6.0, 2, false],
+    [28, 4.05, -26.58, 0, 6.0, 0, false],
+    [-38.58, 4.05, 8, Math.PI / 2, 6.0, 1, false],
+    [38.58, 4.05, -4, -Math.PI / 2, 6.0, 2, false],
+  ].map(([x, y, z, rotY, width, kind, poles]) => new Banner({ scene, world: W, x, y, z, rotY, width, kind, poles }));
 
   /* ---------- 자국 레이어 ---------- */
   W.stainGroup = new THREE.Group();
   scene.add(W.stainGroup);
   return W;
-}
-
-
-/* ---------- 현수막 ---------- */
-function drawNoPigeon(ctx, cx, cy, r) {
-  ctx.save();
-  ctx.fillStyle = '#161616';
-  ctx.beginPath(); ctx.ellipse(cx + r * 0.06, cy + r * 0.14, r * 0.40, r * 0.25, -0.12, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx - r * 0.20, cy + r * 0.00, r * 0.17, r * 0.15, 0.5, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx - r * 0.31, cy - r * 0.13, r * 0.145, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(cx - r * 0.43, cy - r * 0.15); ctx.lineTo(cx - r * 0.60, cy - r * 0.07); ctx.lineTo(cx - r * 0.42, cy - r * 0.04); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(cx + r * 0.38, cy + r * 0.06); ctx.lineTo(cx + r * 0.68, cy - r * 0.10); ctx.lineTo(cx + r * 0.64, cy + r * 0.18); ctx.fill();
-  ctx.strokeStyle = '#D6231B'; ctx.lineWidth = r * 0.17; ctx.lineCap = 'butt';
-  ctx.beginPath(); ctx.arc(cx, cy, r * 0.86, 0, 7); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx - r * 0.60, cy - r * 0.60); ctx.lineTo(cx + r * 0.60, cy + r * 0.60); ctx.stroke();
-  ctx.restore();
-}
-const KFONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Nanum Gothic",sans-serif';
-function outlined(ctx, txt, x, y, fill, stroke, w) {
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = stroke; ctx.lineWidth = w; ctx.strokeText(txt, x, y);
-  ctx.fillStyle = fill; ctx.fillText(txt, x, y);
-}
-function bannerTexture(kind) {
-  const Wd = 1024, Hd = 256;
-  const [c, ctx] = makeCanvas(Wd, Hd);
-  ctx.textBaseline = 'middle';
-  if (kind === 0) {
-    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, Wd, Hd);
-    ctx.strokeStyle = '#2C4DA0'; ctx.lineWidth = 8; ctx.strokeRect(4, 4, Wd - 8, Hd - 8);
-    drawNoPigeon(ctx, 112, 128, 92);
-    drawNoPigeon(ctx, Wd - 112, 128, 92);
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 96px ' + KFONT;
-    outlined(ctx, '비둘기', 372, 96, '#111111', '#FFFFFF', 10);
-    outlined(ctx, '먹이주기 금지', 676, 96, '#D6231B', '#FFFFFF', 10);
-    ctx.fillStyle = '#1F3A8A'; ctx.fillRect(228, 168, 568, 62);
-    ctx.font = 'bold 30px ' + KFONT;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('과도한 먹이주기는 도시생태계에 위해를 끼칠 수 있습니다', 512, 200);
-  } else if (kind === 1) {
-    const g = ctx.createLinearGradient(0, 0, Wd, 0);
-    g.addColorStop(0, '#DDEBF7'); g.addColorStop(0.5, '#FFFFFF'); g.addColorStop(1, '#D3E6F6');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, Wd, Hd);
-    ctx.fillStyle = 'rgba(70,140,205,0.35)';
-    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse(60 + i * 30, 140 + i * 18, 320, 40, -0.35, 0, 7); ctx.fill(); }
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 82px ' + KFONT;
-    outlined(ctx, '비둘기 먹이 주기는', 330, 90, '#1F4FB0', '#FFFFFF', 12);
-    ctx.font = 'bold 108px ' + KFONT;
-    outlined(ctx, '이제 그만 !', 790, 90, '#D6231B', '#FFFFFF', 14);
-    ctx.font = 'bold 28px ' + KFONT;
-    ctx.fillStyle = '#1B1B1B';
-    ctx.fillText('비둘기는 무리를 이뤄 주민에게 혐오감을 주고, 분변, 털 날림 등으로 주거환경이 나빠지고 있습니다.', 512, 186);
-    ctx.fillText('비둘기가 스스로 먹이를 찾을 수 있도록 주민 여러분의 많은 협조 부탁드립니다.', 512, 226);
-  } else {
-    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, Wd, Hd);
-    ctx.strokeStyle = '#BBBBBB'; ctx.lineWidth = 4; ctx.strokeRect(2, 2, Wd - 4, Hd - 4);
-    drawNoPigeon(ctx, Wd - 140, 128, 96);
-    ctx.textAlign = 'left';
-    ctx.font = 'bold 84px ' + KFONT;
-    outlined(ctx, '비둘기', 50, 74, '#111111', '#FFFFFF', 8);
-    ctx.font = 'bold 60px ' + KFONT;
-    outlined(ctx, '에게', 318, 84, '#111111', '#FFFFFF', 8);
-    ctx.font = 'bold 84px ' + KFONT;
-    outlined(ctx, '먹이를 주지마세요', 50, 158, '#D6231B', '#FFFFFF', 8);
-    ctx.font = 'bold 27px ' + KFONT;
-    ctx.fillStyle = '#222222';
-    ctx.fillText('비둘기가 스스로 먹이를 찾아 생태계의 당당한 일원이 될 수 있도록 도와주세요', 52, 222);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  return t;
-}
-const BANNER_TEX = {};
-function addBanner(scene, W, x, y, z, rotY, width, kind, poles) {
-  if (!BANNER_TEX[kind]) BANNER_TEX[kind] = bannerTexture(kind);
-  const h = width / 4;
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, h, 8, 1),
-    new THREE.MeshStandardMaterial({ map: BANNER_TEX[kind], roughness: 0.9, side: THREE.DoubleSide })
-  );
-  // 살짝 늘어진 천 느낌
-  const pos = mesh.geometry.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const px = pos.getX(i) / (width / 2);
-    pos.setZ(i, Math.sin(px * Math.PI) * 0.04 - (1 - px * px) * 0.02);
-  }
-  pos.needsUpdate = true;
-  mesh.geometry.computeVertexNormals();
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotY;
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  scene.add(mesh);
-  const right = new THREE.Vector3(Math.cos(rotY), 0, -Math.sin(rotY));
-  if (poles) {
-    const pm = new THREE.MeshStandardMaterial({ color: 0x777369, roughness: 0.6, metalness: 0.5 });
-    [-1, 1].forEach(s => {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, y + h / 2 + 0.15, 8), pm);
-      pole.position.set(x + right.x * s * (width / 2 + 0.06), (y + h / 2 + 0.15) / 2, z + right.z * s * (width / 2 + 0.06));
-      pole.castShadow = true;
-      scene.add(pole);
-    });
-  }
-  const n = new THREE.Vector3(Math.sin(rotY), 0, Math.cos(rotY));
-  W.perches.push({ pos: new THREE.Vector3(x, y + h / 2 + 0.03, z), hard: 0.62, kind: 'banner', normal: n });
 }
 
 /* ---------- 자국 만들기 ---------- */
@@ -931,8 +823,8 @@ function tailTexture() {
 const IRIDESCENT = () => new THREE.ShaderMaterial({
   uniforms: {
     base: { value: new THREE.Color(0x6E7885) },
-    ca:   { value: new THREE.Color(0x1F8F5C) },
-    cb:   { value: new THREE.Color(0x8046A8) },
+    ca: { value: new THREE.Color(0x1F8F5C) },
+    cb: { value: new THREE.Color(0x8046A8) },
     lightDir: { value: new THREE.Vector3(0.55, 0.72, 0.42) }
   },
   vertexShader: `
@@ -960,24 +852,24 @@ const IRIDESCENT = () => new THREE.ShaderMaterial({
 });
 
 const M = {
-  body:  () => new THREE.MeshStandardMaterial({ color: 0x6B747F, roughness: 0.88 }),
+  body: () => new THREE.MeshStandardMaterial({ color: 0x6B747F, roughness: 0.88 }),
   belly: () => new THREE.MeshStandardMaterial({ color: 0x79828D, roughness: 0.9 }),
-  rump:  () => new THREE.MeshStandardMaterial({ color: 0x8B939D, roughness: 0.88 }),
-  wing:  () => new THREE.MeshStandardMaterial({ map: wingTexture(), roughness: 0.84, side: THREE.DoubleSide }),
-  tail:  () => new THREE.MeshStandardMaterial({ map: tailTexture(), roughness: 0.84, side: THREE.DoubleSide }),
-  beak:  () => new THREE.MeshStandardMaterial({ color: 0x33333A, roughness: 0.5 }),
-  cere:  () => new THREE.MeshStandardMaterial({ color: 0xE6E2DA, roughness: 0.95 }),
-  eye:   () => new THREE.MeshStandardMaterial({ color: 0x121010, roughness: 0.2 }),
-  iris:  () => new THREE.MeshStandardMaterial({ color: 0xD4501F, roughness: 0.35, emissive: 0x40140A, emissiveIntensity: 0.45 }),
-  foot:  () => new THREE.MeshStandardMaterial({ color: 0xB44E44, roughness: 0.72 }),
-  claw:  () => new THREE.MeshStandardMaterial({ color: 0x2B2724, roughness: 0.6 })
+  rump: () => new THREE.MeshStandardMaterial({ color: 0x8B939D, roughness: 0.88 }),
+  wing: () => new THREE.MeshStandardMaterial({ map: wingTexture(), roughness: 0.84, side: THREE.DoubleSide }),
+  tail: () => new THREE.MeshStandardMaterial({ map: tailTexture(), roughness: 0.84, side: THREE.DoubleSide }),
+  beak: () => new THREE.MeshStandardMaterial({ color: 0x33333A, roughness: 0.5 }),
+  cere: () => new THREE.MeshStandardMaterial({ color: 0xE6E2DA, roughness: 0.95 }),
+  eye: () => new THREE.MeshStandardMaterial({ color: 0x121010, roughness: 0.2 }),
+  iris: () => new THREE.MeshStandardMaterial({ color: 0xD4501F, roughness: 0.35, emissive: 0x40140A, emissiveIntensity: 0.45 }),
+  foot: () => new THREE.MeshStandardMaterial({ color: 0xB44E44, roughness: 0.72 }),
+  claw: () => new THREE.MeshStandardMaterial({ color: 0x2B2724, roughness: 0.6 })
 };
 
 /* 날개 — XZ 평면에 직접 구성 (x=날개 폭, z=앞뒤, y=캠버) */
 const WING_SPAN = 0.340;
-const WING_T    = [0.00, 0.14, 0.32, 0.52, 0.72, 0.88, 1.00];
+const WING_T = [0.00, 0.14, 0.32, 0.52, 0.72, 0.88, 1.00];
 const WING_LEAD = [0.046, 0.068, 0.066, 0.050, 0.030, 0.010, -0.014];
-const WING_TRAIL= [-0.082, -0.104, -0.106, -0.092, -0.068, -0.040, -0.022];
+const WING_TRAIL = [-0.082, -0.104, -0.106, -0.092, -0.068, -0.040, -0.022];
 const WING_CAMB = [0.000, 0.006, 0.006, 0.001, -0.006, -0.013, -0.020];
 
 function wingGeometry(side) {
@@ -986,13 +878,13 @@ function wingGeometry(side) {
   for (let i = 0; i < n; i++) {
     const x = WING_T[i] * WING_SPAN * side;
     const y = WING_CAMB[i];
-    pos.push(x, y + 0.004, WING_LEAD[i]);   uvs.push(WING_T[i], 0);
-    pos.push(x, y, WING_TRAIL[i]);          uvs.push(WING_T[i], 1);
+    pos.push(x, y + 0.004, WING_LEAD[i]); uvs.push(WING_T[i], 0);
+    pos.push(x, y, WING_TRAIL[i]); uvs.push(WING_T[i], 1);
   }
   for (let i = 0; i < n - 1; i++) {
     const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
     if (side > 0) { idx.push(a, b, d, a, d, c); }
-    else          { idx.push(a, d, b, a, c, d); }
+    else { idx.push(a, d, b, a, c, d); }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1015,7 +907,7 @@ function foldedWingMesh(side) {
   for (let i = 0; i < n - 1; i++) {
     const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
     if (side > 0) idx.push(a, b, d, a, d, c);
-    else          idx.push(a, d, b, a, c, d);
+    else idx.push(a, d, b, a, c, d);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1069,7 +961,7 @@ function buildTail() {
   rows.forEach((r, i) => {
     const v = i / (rows.length - 1);
     pos.push(-r.hw, -v * 0.006, r.z); uvs.push(0, v);
-    pos.push( r.hw, -v * 0.006, r.z); uvs.push(1, v);
+    pos.push(r.hw, -v * 0.006, r.z); uvs.push(1, v);
   });
   for (let i = 0; i < rows.length - 1; i++) {
     const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
@@ -1247,7 +1139,7 @@ function medalFaceTexture(i) {
   ctx.beginPath(); ctx.arc(64, 64, 53, 0, 7); ctx.stroke();
   ctx.fillStyle = sp.dark;
   if (i < 2) {
-    if (typeof drawNoPigeon === 'function') drawNoPigeon(ctx, 64, 64, 42);
+    if (typeof BannerTextures.drawNoPigeon === 'function') BannerTextures.drawNoPigeon(ctx, 64, 64, 42);
   } else {
     // 사람 픽토그램 — 명예 인간
     ctx.beginPath(); ctx.arc(64, 33, 11, 0, 7); ctx.fill();
@@ -1321,327 +1213,6 @@ function addBadge(bird, index) {
    비행 물리
    ============================================================ */
 const PECK_DUR = 0.34;
-const FLY = {
-  gravity: 9.0,
-  flapUp: 3.0,
-  flapFwd: 1.7,
-  flapCooldown: 0.27,
-  liftCoef: 0.070,
-  maxLift: 14.0,
-  drag: 0.34,
-  align: 3.4,
-  yawRate: 2.2,
-  pitchRate: 1.7,
-  maxPitch: 0.95,
-  walkSpeed: 1.5,
-  takeoffUp: 4.2
-};
-
-class Pigeon {
-  constructor(scene) {
-    this.model = buildPigeon();
-    scene.add(this.model.root);
-    this.pos = new THREE.Vector3(0, 16, 14);
-    this.vel = new THREE.Vector3(0, 0, -7); 
-    this.yaw = Math.PI;
-    this.pitch = -0.18;
-    this.roll = 0;
-    this.mode = 'fly';
-    this.flapT = 0;
-    this.flapPhase = 0;
-    this.walkPhase = 0;
-    this.perch = null;
-    this.stunT = 0;
-    this.toesLost = 0;
-    this.slipT = 0;
-    this.fold = 1;
-    this.flapHeld = false;
-    this.peckT = 0;
-    this.peckTarget = null;
-    this.cooT = 0;
-    this.landCooldown = 0;
-    this.flapHeld = false;  // 버튼 누르고 있는 동안 계속 날갯짓
-    this.peckT = 0;         // 쪼기 애니메이션
-    this.peckDur = 0.34;
-  }
-
-  forward() {
-    const cp = Math.cos(this.pitch);
-    return new THREE.Vector3(Math.sin(this.yaw) * cp, Math.sin(this.pitch), Math.cos(this.yaw) * cp);
-  }
-
-  flap() {
-    if (this.mode === 'stun') return false;
-    if (this.flapT > 0) return false;
-    if (this.mode === 'walk' || this.mode === 'perch') {
-      this.mode = 'fly';
-      this.perch = null;
-      this.vel.set(Math.sin(this.yaw) * 2.2, FLY.takeoffUp, Math.cos(this.yaw) * 2.2);
-      this.pitch = 0.35;
-      this.flapT = FLY.flapCooldown;
-      this.flapPhase = 0;
-      if (typeof SFX !== 'undefined') SFX.flap();
-      return true;
-    }
-    const f = this.forward();
-    this.vel.y += FLY.flapUp;
-    this.vel.addScaledVector(f, FLY.flapFwd);
-    this.flapT = FLY.flapCooldown;
-    this.flapPhase = 0;
-    if (typeof SFX !== 'undefined') SFX.flap();
-    return true;
-  }
-
-  update(dt, input) {
-    if (this.flapT > 0) this.flapT -= dt;
-    if (this.peckT > 0) this.peckT -= dt;
-    if (this.cooT > 0) this.cooT -= dt;
-    if (this.landCooldown > 0) this.landCooldown -= dt;
-    if (this.flapHeld && this.flapT <= 0 && (this.mode === 'fly' || this.mode === 'walk' || this.mode === 'perch')) this.flap();
-    if (this.peckT > 0) this.peckT -= dt;
-    if (this.cooT > 0) this.cooT -= dt;
-    if (this.landCooldown > 0) this.landCooldown -= dt;
-    if (this.flapHeld && this.mode === 'fly' && this.flapT <= 0) this.flap();
-
-    if (this.mode === 'stun') {
-      this.stunT -= dt;
-      this.vel.y -= FLY.gravity * dt;
-      const prevS = this.pos.clone();
-      this.pos.addScaledVector(this.vel, dt);
-      if (typeof collideSolids === 'function') collideSolids(prevS, this.pos, this.vel);
-      this.roll += dt * 5;
-      const ghs = groundHeightAt(this.pos.x, this.pos.z, this.pos.y);
-      if (this.pos.y <= ghs + 0.115) {
-        this.pos.y = ghs + 0.115;
-        this.vel.set(0, 0, 0);
-        if (this.stunT <= 0) { this.mode = 'walk'; this.roll = 0; }
-      }
-      this.applyTransform(dt);
-      return;
-    }
-
-    if (this.mode === 'walk' || this.mode === 'perch') {
-      this.updateGround(dt, input);
-      this.applyTransform(dt);
-      return;
-    }
-
-    this.yaw -= input.x * FLY.yawRate * dt;
-    this.pitch += -input.y * FLY.pitchRate * dt;
-    this.pitch = Math.max(-FLY.maxPitch, Math.min(FLY.maxPitch, this.pitch));
-    this.pitch += (-0.05 - this.pitch) * 0.35 * dt;
-
-    const targetRoll = -input.x * 0.85;
-    this.roll += (targetRoll - this.roll) * Math.min(1, dt * 5.5);
-
-    const f = this.forward();
-    const speed = this.vel.length();
-
-    const up = new THREE.Vector3(0, 1, 0).addScaledVector(f, -f.y).normalize();
-    let lift = Math.min(FLY.maxLift, speed * speed * FLY.liftCoef);
-    lift *= 1 - Math.abs(this.roll) * 0.22;
-    this.vel.addScaledVector(up, lift * dt);
-
-    this.vel.y -= FLY.gravity * dt;
-    this.vel.multiplyScalar(Math.exp(-FLY.drag * dt * (1 + Math.abs(this.pitch) * 0.4)));
-
-    const aligned = f.clone().multiplyScalar(this.vel.length());
-    this.vel.lerp(aligned, Math.min(1, FLY.align * dt));
-
-    const prev = this.pos.clone();
-    this.pos.addScaledVector(this.vel, dt);
-    if (typeof collideSolids === 'function') collideSolids(prev, this.pos, this.vel);
-
-    const LIM = 108;
-    if (Math.abs(this.pos.x) > LIM) { this.pos.x = Math.sign(this.pos.x) * LIM; this.vel.x *= -0.3; }
-    if (Math.abs(this.pos.z) > LIM) { this.pos.z = Math.sign(this.pos.z) * LIM; this.vel.z *= -0.3; }
-    if (this.pos.y > 62) { this.pos.y = 62; this.vel.y = Math.min(0, this.vel.y); }
-
-    this.applyTransform(dt);
-  }
-
-  updateGround(dt, input) {
-    if (this.peckT > 0) return;
-    const fwd = -input.y;
-    this.yaw -= input.x * 2.4 * dt;
-    if (this.mode === 'perch') {
-      // 횃대 위에서는 제자리. 스틱을 어느 쪽이든 세게 밀면 그쪽으로 뛰어내림
-      const mag = Math.hypot(input.x, input.y);
-      if (mag > 0.55) {
-        this.yaw -= Math.atan2(input.x, -input.y);
-        this.mode = 'fly'; this.perch = null;
-        this.vel.set(Math.sin(this.yaw) * 1.8, -0.3, Math.cos(this.yaw) * 1.8);
-        this.pitch = -0.25;
-        if (typeof SFX !== 'undefined') SFX.flap();
-      }
-      this.roll += (0 - this.roll) * Math.min(1, dt * 6);
-      this.pitch += (0 - this.pitch) * Math.min(1, dt * 6);
-      return;
-    }
-    const spd = FLY.walkSpeed * (1 - this.toesLost * 0.05);
-    if (Math.abs(fwd) > 0.05) {
-      const prev = this.pos.clone();
-      this.pos.x += Math.sin(this.yaw) * fwd * spd * dt;
-      this.pos.z += Math.cos(this.yaw) * fwd * spd * dt;
-      this.walkPhase += dt * 7.5 * Math.abs(fwd);
-      if (this.mode === 'walk' && typeof collideSolids === 'function') {
-        const v0 = new THREE.Vector3(); collideSolids(prev, this.pos, v0);
-        // 지붕 가장자리에서 떨어짐
-        const gh = groundHeightAt(this.pos.x, this.pos.z, this.pos.y);
-        if (this.pos.y > gh + 0.5) {
-          this.mode = 'fly'; this.vel.set(Math.sin(this.yaw) * 1.2, -0.5, Math.cos(this.yaw) * 1.2); this.pitch = -0.3;
-          return;
-        }
-      }
-    }
-    this.roll += (0 - this.roll) * Math.min(1, dt * 6);
-    this.pitch += (0 - this.pitch) * Math.min(1, dt * 6);
-    if (this.mode === 'walk') this.pos.y = groundHeightAt(this.pos.x, this.pos.z, this.pos.y) + 0.115;
-  }
-
-  applyTransform(dt) {
-    const m = this.model;
-    m.root.position.copy(this.pos);
-    m.root.rotation.y = this.yaw;
-    m.tilt.rotation.x = -this.pitch;
-    m.tilt.rotation.z = this.roll;
-
-    const flying = this.mode === 'fly' || this.mode === 'stun' || this.slipT > 0;
-    this.fold += ((flying ? 0 : 1) - this.fold) * Math.min(1, dt * 9);
-
-    let flapAngle = 0, twist = 0;
-    if (this.mode === 'fly') {
-      const glide = this.flapT <= 0;
-      this.flapPhase += dt * (glide ? 3.0 : 13.5);
-      if (glide) {
-        flapAngle = 0.10 + Math.sin(this.flapPhase * 1.1) * 0.055;
-        twist = -0.10;
-      } else {
-        flapAngle = Math.sin(this.flapPhase * 2.9 - 1.2) * 1.05 + 0.15;
-        twist = Math.sin(this.flapPhase * 2.9 - 1.9) * 0.42;
-      }
-    } else if (this.mode === 'stun' || this.slipT > 0) {
-      this.slipT = Math.max(0, this.slipT - dt);
-      this.flapPhase += dt * 22;
-      flapAngle = Math.sin(this.flapPhase * 3) * 0.95;
-      twist = 0.25;
-    } else {
-      flapAngle = -0.02;
-    }
-
-    // 접힘: 뒤로 쓸고, 몸통 옆면에 붙이고, 손목이 접히므로 길이가 줄어듦
-    const f = this.fold;
-    const sweep = f * 1.30;
-    const spanScale = 1 - f * 0.46;
-    const chordScale = 1 - f * 0.30;
-
-    m.wingR.upperArm.rotation.z = flapAngle * (1 - f) - f * 0.10;
-    m.wingL.upperArm.rotation.z = -(flapAngle * (1 - f) - f * 0.10);
-    m.wingR.upperArm.rotation.x = twist * (1 - f);
-    m.wingL.upperArm.rotation.x = twist * (1 - f);
-    m.wingR.upperArm.position.set(0.030 - f * 0.006, 0.040 + f * 0.008, 0.006 - f * 0.026);
-    m.wingL.upperArm.position.set(-0.030 + f * 0.006, 0.040 + f * 0.008, 0.006 - f * 0.026);
-    m.wingR.foreArm.rotation.y = sweep;
-    m.wingL.foreArm.rotation.y = -sweep;
-    m.wingR.foreArm.rotation.z = 0;
-    m.wingL.foreArm.rotation.z = 0;
-    m.wingR.foreArm.scale.set(spanScale, 1, chordScale);
-    m.wingL.foreArm.scale.set(spanScale, 1, chordScale);
-    const spread = f < 0.55;
-    m.wingR.shoulder.visible = spread;
-    m.wingL.shoulder.visible = spread;
-    m.foldedR.visible = !spread;
-    m.foldedL.visible = !spread;
-
-    // 꼬리
-    if (this.mode === 'fly') {
-      m.tailPivot.rotation.x = -this.pitch * 0.30 + 0.06;
-      m.tailPivot.scale.x = 1.0;
-    } else {
-      m.tailPivot.rotation.x = -0.10;
-      m.tailPivot.scale.x = 0.72;
-    }
-
-    // 머리 까딱 / 다리
-    if (this.mode === 'walk' || this.mode === 'perch') {
-      const p = this.walkPhase % (Math.PI * 2);
-      const thrust = p < Math.PI * 0.32 ? (p / (Math.PI * 0.32)) : 1 - ((p - Math.PI * 0.32) / (Math.PI * 1.68));
-      m.headPivot.position.z = 0.108 + thrust * 0.050;
-      m.headPivot.position.y = 0.126 + thrust * 0.006;
-      m.headPivot.rotation.x = -thrust * 0.12;
-      if (this.peckT > 0) {
-        const k = Math.sin(Math.PI * (1 - this.peckT / this.peckDur));   // 0→1→0
-        m.headPivot.rotation.x = -1.30 * k;
-        m.headPivot.position.y = 0.126 - 0.085 * k;
-        m.headPivot.position.z = 0.108 + 0.070 * k;
-        m.tilt.rotation.x = 0.28 * k;      // 몸도 앞으로 숙임
-      }
-      m.tilt.position.y = Math.sin(this.walkPhase * 2) * 0.005;
-      m.feet[0].group.position.set(-0.031, -0.104 + Math.max(0, Math.sin(this.walkPhase)) * 0.018, 0.010 + Math.sin(this.walkPhase) * 0.038);
-      m.feet[1].group.position.set(0.031, -0.104 + Math.max(0, -Math.sin(this.walkPhase)) * 0.018, 0.010 - Math.sin(this.walkPhase) * 0.038);
-      m.feet[0].group.rotation.x = 0;
-      m.feet[1].group.rotation.x = 0;
-    } else {
-      m.headPivot.position.set(0, 0.126, 0.108);
-      m.headPivot.rotation.x = THREE.MathUtils.clamp(this.pitch * 0.55, -0.45, 0.45);
-      m.tilt.position.y = 0;
-      m.feet[0].group.position.set(-0.026, -0.052, -0.062);
-      m.feet[1].group.position.set(0.026, -0.052, -0.062);
-      m.feet[0].group.rotation.x = 1.55;
-      m.feet[1].group.rotation.x = 1.55;
-    }
-    this.applyPeck();
-    this.applyCoo();
-  }
-
-  peck() {
-    if (this.peckT > 0 || this.mode !== 'walk') return false;
-    this.peckT = this.peckDur;
-    return true;
-  }
-
-  applyCoo() {
-    const m = this.model;
-    if (this.cooT > 0) {
-      const k = Math.sin(Math.PI * Math.min(1, this.cooT / 1.1));
-      const p = 1 + 0.42 * k + 0.08 * Math.sin(this.cooT * 60) * k;
-      m.neck.scale.set(0.080 * p, 0.098 * (1 + 0.18 * k), 0.086 * p);
-      m.neck2.scale.set(0.066 * (1 + 0.25 * k), 0.074, 0.070 * (1 + 0.25 * k));
-      m.headPivot.rotation.x += 0.35 * k;
-    } else {
-      m.neck.scale.set(0.080, 0.098, 0.086);
-      m.neck2.scale.set(0.066, 0.074, 0.070);
-    }
-  }
-
-  applyPeck() {
-    if (this.peckT <= 0) return;
-    const m = this.model;
-    const k = Math.sin(Math.PI * Math.min(1, this.peckT / PECK_DUR));
-    m.headPivot.rotation.x = -1.25 * k;
-    m.headPivot.position.y = 0.126 - 0.075 * k;
-    m.headPivot.position.z = 0.108 + 0.040 * k;
-    m.tilt.rotation.x = -this.pitch + 0.26 * k;
-  }
-
-  loseToe() {
-    const alive = this.model.allToes.filter(t => t.visible);
-    if (alive.length <= 2) return null;
-    const pick = alive[(Math.random() * alive.length) | 0];
-    pick.visible = false;
-    this.toesLost++;
-    return pick;
-  }
-
-  toeCount() { return this.model.allToes.filter(t => t.visible).length; }
-
-  perchChance(hard) {
-    const t = this.toeCount() / 8;
-    const grip = 0.25 + 0.75 * t;
-    const base = 1 - hard * 0.92;
-    return Math.max(0.06, Math.min(0.99, base + (grip - 1) * hard * 1.9 + grip * 0.14));
-  }
-}
 
 /* ============================================================
    MAIN
@@ -1666,85 +1237,6 @@ let memStore = null;
 function loadMarks() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
   catch (e) { return memStore || []; }
-}
-
-/* ============================================================
-   사람
-   ============================================================ */
-const SKIN = [0xE8C4A0, 0xD4A87C, 0xC08D62, 0xF0D2B4, 0xA8764E];
-const CLOTH = [0x3A4C6B, 0x6B3A3A, 0x4A5B4A, 0x2E2E33, 0x7A6A4E, 0x5B4A6B, 0x8A8578];
-
-function buildPerson(sitting, opts) {
-  opts = opts || {};
-  const colors = {
-    skin: opts.skin ?? SKIN[(Math.random() * SKIN.length) | 0],
-    top: opts.top ?? CLOTH[(Math.random() * CLOTH.length) | 0],
-    bottom: opts.bottom ?? CLOTH[(Math.random() * CLOTH.length) | 0],
-    hair: opts.hair ?? [0x1E1A17, 0x3A2A1E, 0x6B5540, 0x8A8580][(Math.random() * 4) | 0]
-  };
-  const g = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.85 });
-  const top = new THREE.MeshStandardMaterial({ color: colors.top, roughness: 0.92 });
-  const bottom = new THREE.MeshStandardMaterial({ color: colors.bottom, roughness: 0.92 });
-  const shoe = new THREE.MeshStandardMaterial({ color: 0x2A2724, roughness: 0.8 });
-  const hipY = sitting ? 0.52 : 0.92;
-  const upper = new THREE.Group(); upper.position.y = hipY; g.add(upper);
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.40, 4, 10), top);
-  torso.position.y = 0.32; torso.castShadow = true; upper.add(torso);
-  const sh = new THREE.Mesh(new THREE.CapsuleGeometry(0.155, 0.30, 4, 10), top);
-  sh.rotation.z = Math.PI / 2; sh.position.y = 0.52; sh.castShadow = true; upper.add(sh);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.09, 8), skin);
-  neck.position.y = 0.68; upper.add(neck);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 12), skin);
-  head.scale.set(0.92, 1.12, 1.0); head.position.y = 0.80; head.castShadow = true; upper.add(head);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.122, 14, 10, 0, 6.3, 0, 1.9),
-    new THREE.MeshStandardMaterial({ color: colors.hair, roughness: 0.95 }));
-  hair.scale.set(0.95, 1.15, 1.02); hair.position.y = 0.815; hair.castShadow = true; upper.add(hair);
-  if (opts.cap) {
-    const capMat = new THREE.MeshStandardMaterial({ color: 0x17233A, roughness: 0.85 });
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.128, 0.132, 0.075, 16), capMat);
-    cap.position.y = 0.905; cap.castShadow = true; upper.add(cap);
-    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.018, 0.11), capMat);
-    brim.position.set(0, 0.87, 0.13); upper.add(brim);
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.03, 0.02),
-      new THREE.MeshStandardMaterial({ color: 0xD8C25A, roughness: 0.6 }));
-    band.position.set(0, 0.885, 0.118); upper.add(band);
-  }
-  [-1, 1].forEach(s => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6),
-      new THREE.MeshStandardMaterial({ color: 0x22201E, roughness: 0.3 }));
-    eye.position.set(s * 0.042, 0.815, 0.098); upper.add(eye);
-  });
-
-  const arms = [];
-  [-1, 1].forEach(s => {
-    const arm = new THREE.Group(); arm.position.set(s * 0.20, 0.54, 0);
-    const ua = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.24, 3, 8), top);
-    ua.position.y = -0.16; ua.castShadow = true; arm.add(ua);
-    const fore = new THREE.Group(); fore.position.y = -0.30;
-    const fmesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.046, 0.22, 3, 8), skin);
-    fmesh.position.y = -0.14; fmesh.castShadow = true; fore.add(fmesh);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skin);
-    hand.position.y = -0.28; fore.add(hand);
-    arm.add(fore); upper.add(arm); arms.push({ arm, fore, hand });
-  });
-
-  const legs = [];
-  [-1, 1].forEach(s => {
-    const leg = new THREE.Group(); leg.position.set(s * 0.085, hipY, 0);
-    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, sitting ? 0.30 : 0.34, 3, 8), bottom);
-    const shin = new THREE.Group();
-    if (sitting) { thigh.rotation.x = -Math.PI / 2; thigh.position.set(0, 0, 0.20); shin.position.set(0, 0, 0.40); }
-    else { thigh.position.y = -0.19; shin.position.y = -0.40; }
-    thigh.castShadow = true; leg.add(thigh);
-    const shinMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.34, 3, 8), bottom);
-    shinMesh.position.y = -0.19; shinMesh.castShadow = true; shin.add(shinMesh);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.24), shoe);
-    foot.position.set(0, -0.40, 0.06); foot.castShadow = true; shin.add(foot);
-    leg.add(shin); g.add(leg); legs.push({ leg, shin });
-  });
-  return { group: g, upper, arms, legs, head, colors };
 }
 
 function spawnPeople() {
@@ -1775,8 +1267,10 @@ function spawnPeople() {
     p.group.rotation.y = s.rot;
     scene.add(p.group);
     if (s.feeder) attachFoodSnack(p);
-    people.push({ ...p, ...s, id: i, alive: true, reported: false,
-      feedT: Math.random() * 3, walkT: 0, dir: Math.random() * 7, leaveT: 0, phase: Math.random() * 7 });
+    people.push({
+      ...p, ...s, id: i, alive: true, reported: false,
+      feedT: Math.random() * 3, walkT: 0, dir: Math.random() * 7, leaveT: 0, phase: Math.random() * 7
+    });
   });
   spawnSnackEater();
 }
@@ -1814,9 +1308,11 @@ function spawnSnackEater() {
   eater.group.rotation.y = Math.random() * Math.PI * 2;
   scene.add(eater.group);
   attachFoodSnack(eater);
-  const actor = { ...eater, id: people.length, sit: true, walk: false, feeder: true,
+  const actor = {
+    ...eater, id: people.length, sit: true, walk: false, feeder: true,
     foodEater: true, respawnSnack: true, alive: true, reported: false, feedT: 1.5 + Math.random() * 2,
-    walkT: 0, dir: 0, leaveT: 0, phase: Math.random() * 7, eatT: 0 };
+    walkT: 0, dir: 0, leaveT: 0, phase: Math.random() * 7, eatT: 0
+  };
   people.push(actor);
   return actor;
 }
@@ -1926,9 +1422,11 @@ function spawnFlock() {
     const poopMesh = new THREE.Mesh(new THREE.SphereGeometry(0.027, 9, 7),
       new THREE.MeshStandardMaterial({ color: 0x8D7550, roughness: 0.95 }));
     poopMesh.visible = false; scene.add(poopMesh);
-    const f = { m: p, x: 0, y: 0.115, z: 0, tx: 0, ty: 0.115, tz: 0, yaw: Math.random() * 7,
+    const f = {
+      m: p, x: 0, y: 0.115, z: 0, tx: 0, ty: 0.115, tz: 0, yaw: Math.random() * 7,
       state: 'walk', t: Math.random() * 3, walkPhase: Math.random() * 7, peck: 0, perch: null, target: null,
-      poopMesh, poopTimer: 3 + Math.random() * 17, poopDuration: 0, poopAge: 0, poopMax: 0 };
+      poopMesh, poopTimer: 3 + Math.random() * 17, poopDuration: 0, poopAge: 0, poopMax: 0
+    };
     if (i < 5 && pl.length) {
       const pc = pl[(Math.random() * pl.length) | 0];
       f.x = pc.pos.x; f.y = pc.pos.y + 0.115; f.z = pc.pos.z; f.state = 'perch'; f.perch = pc;
@@ -1969,9 +1467,11 @@ function spawnBigRedPigeon() {
   model.root.scale.setScalar(1.85);
   scene.add(model.root);
   const point = randomPlazaSpot();
-  redPigeon = { type: 'redPigeon', model, group: model.root, x: point.x, z: point.z,
+  redPigeon = {
+    type: 'redPigeon', model, group: model.root, x: point.x, z: point.z,
     tx: point.x, tz: point.z, yaw: Math.random() * Math.PI * 2, moveT: 1, phase: Math.random() * 8,
-    alive: true, reported: false };
+    alive: true, reported: false
+  };
   model.root.position.set(point.x, 0.115, point.z);
   model.root.rotation.y = redPigeon.yaw;
 }
@@ -2152,7 +1652,13 @@ function init() {
   spawnPeople();
   spawnNests();
   spawnFlock();
-  bird = new Pigeon(scene);
+  bird = new Pigeon({
+    scene: scene,
+    buildPigeon: buildPigeon,
+    groundHeightAt: groundHeightAt,
+    sfx: SFX,
+    collideSolids: collideSolids
+  });
   spawnBigRedPigeon();
 
   const marks = loadMarks();
@@ -2328,138 +1834,9 @@ function doFlap() {
   bird.flap();
 }
 
-/* ============================================================
-   효과음 — 파일 없이 합성
-   ============================================================ */
-const SFX = (() => {
-  let ctx = null, noiseBuf = null, out = null, lastCar = -9, lastFlap = -9;
-  function ensure() {
-    if (!ctx) {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const len = ctx.sampleRate | 0;
-      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      // 전체 출력 버스: 크게 틀어도 안 찢어지게 컴프레서를 거침
-      const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -12; comp.knee.value = 14; comp.ratio.value = 5;
-      comp.attack.value = 0.004; comp.release.value = 0.14;
-      comp.connect(ctx.destination);
-      out = ctx.createGain(); out.gain.value = 1.0; out.connect(comp);
-    }
-    if (ctx.state === 'suspended') ctx.resume();
-    return ctx;
-  }
-  function burst(t0, dur, type, f0, f1, q, peak, attack) {
-    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
-    const fl = ctx.createBiquadFilter(); fl.type = type; fl.Q.value = q;
-    fl.frequency.setValueAtTime(f0, t0); fl.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(fl); fl.connect(g); g.connect(out);
-    src.start(t0); src.stop(t0 + dur + 0.02);
-  }
-  function tone(t0, dur, type, f0, f1, peak, attack) {
-    const o = ctx.createOscillator(); o.type = type;
-    o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(out);
-    o.start(t0); o.stop(t0 + dur + 0.02);
-  }
-  return {
-    init() { try { ensure(); } catch (e) {} },
-    flap() {  // 푸드득
-      try { const c = ensure(), t0 = c.currentTime; if (t0 - lastFlap < 0.08) return; lastFlap = t0;
-        burst(t0, 0.26, 'bandpass', 620, 220, 0.55, 0.62, 0.07);
-        burst(t0 + 0.14, 0.22, 'bandpass', 520, 200, 0.55, 0.48, 0.06);
-        tone(t0 + 0.02, 0.14, 'sine', 105, 55, 0.30, 0.03);
-      } catch (e) {}
-    },
-    flutter() {  // 미끄러져 퍼덕
-      try { const c = ensure(), t0 = c.currentTime;
-        for (let i = 0; i < 5; i++) burst(t0 + i * 0.09, 0.14, 'bandpass', 700, 260, 0.6, 0.48, 0.03);
-      } catch (e) {}
-    },
-    land() {  // 착지 툭
-      try { const c = ensure(), t0 = c.currentTime;
-        tone(t0, 0.09, 'sine', 120, 55, 0.8, 0.008);
-        burst(t0, 0.05, 'lowpass', 900, 300, 0.7, 0.42, 0.005);
-      } catch (e) {}
-    },
-    peck() {  // 톡
-      try { const c = ensure(), t0 = c.currentTime;
-        burst(t0, 0.022, 'highpass', 2600, 2600, 0.7, 0.6, 0.003);
-        tone(t0, 0.03, 'sine', 900, 400, 0.25, 0.003);
-      } catch (e) {}
-    },
-    thud() {  // 유리에 박음
-      try { const c = ensure(), t0 = c.currentTime;
-        tone(t0, 0.18, 'sine', 95, 40, 1.1, 0.008);
-        burst(t0, 0.08, 'lowpass', 1200, 200, 0.6, 0.7, 0.004);
-        tone(t0 + 0.01, 0.35, 'sine', 2400, 2300, 0.18, 0.004);
-      } catch (e) {}
-    },
-    beep() {  // 신고 접수
-      try { const c = ensure(), t0 = c.currentTime;
-        tone(t0, 0.06, 'square', 1320, 1320, 0.13, 0.004);
-        tone(t0 + 0.09, 0.09, 'square', 1760, 1760, 0.13, 0.004);
-      } catch (e) {}
-    },
-    car(k) {  // 차 지나감 (k: 0~1 가까움)
-      try { const c = ensure(), t0 = c.currentTime; if (t0 - lastCar < 0.9) return; lastCar = t0;
-        burst(t0, 0.95, 'lowpass', 260 + k * 700, 200, 0.6, 0.28 + k * 0.6, 0.30);
-      } catch (e) {}
-    },
-    fanfare() {  // 빰-빠-밤-빠아
-      try { const c = ensure(), t0 = c.currentTime;
-        const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 0.7; lp.connect(out);
-        const note = (f, s, d, peak) => {
-          [1, 1.005].forEach(det => {
-            const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f * det;
-            const g = c.createGain();
-            g.gain.setValueAtTime(0.0001, t0 + s); g.gain.exponentialRampToValueAtTime(peak, t0 + s + 0.03);
-            g.gain.setValueAtTime(peak, t0 + s + d * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t0 + s + d);
-            o.connect(g); g.connect(lp); o.start(t0 + s); o.stop(t0 + s + d + 0.05);
-          });
-        };
-        note(523.25, 0.00, 0.16, 0.22);
-        note(523.25, 0.18, 0.16, 0.22);
-        note(659.25, 0.36, 0.16, 0.22);
-        note(783.99, 0.54, 0.16, 0.22);
-        note(1046.5, 0.74, 0.95, 0.26);
-        note(783.99, 0.74, 0.95, 0.14);
-        note(523.25, 0.74, 0.95, 0.14);
-      } catch (e) {}
-    },
-    coo() {
-      try { const c = ensure(), t0 = c.currentTime;
-        const master = c.createGain(); master.gain.setValueAtTime(0.0001, t0); master.connect(out);
-        const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 1.6; lp.connect(master);
-        const o1 = c.createOscillator(); o1.type = 'triangle';
-        const o2 = c.createOscillator(); o2.type = 'sine';
-        const o3 = c.createOscillator(); o3.type = 'sawtooth';
-        const g2 = c.createGain(); g2.gain.value = 0.6;
-        const g3 = c.createGain(); g3.gain.value = 0.18;
-        o1.connect(lp); o2.connect(g2); g2.connect(lp); o3.connect(g3); g3.connect(lp);
-        const trem = c.createOscillator(); trem.type = 'sine'; trem.frequency.value = 26;
-        const tg = c.createGain(); tg.gain.value = 0.55; trem.connect(tg); tg.connect(master.gain);
-        [[0.00, 0.26, 330], [0.30, 0.20, 305], [0.55, 0.50, 285]].forEach(([s, d, f]) => {
-          o1.frequency.setValueAtTime(f * 1.12, t0 + s); o1.frequency.exponentialRampToValueAtTime(f * 0.86, t0 + s + d);
-          o2.frequency.setValueAtTime(f * 2.05, t0 + s); o2.frequency.exponentialRampToValueAtTime(f * 1.7, t0 + s + d);
-          o3.frequency.setValueAtTime(f * 3.02, t0 + s); o3.frequency.exponentialRampToValueAtTime(f * 2.55, t0 + s + d);
-          master.gain.setValueAtTime(0.0001, t0 + s);
-          master.gain.exponentialRampToValueAtTime(1.5, t0 + s + 0.06);
-          master.gain.exponentialRampToValueAtTime(0.0001, t0 + s + d);
-        });
-        o1.start(t0); o2.start(t0); o3.start(t0); trem.start(t0);
-        o1.stop(t0 + 1.2); o2.stop(t0 + 1.2); o3.stop(t0 + 1.2); trem.stop(t0 + 1.2);
-      } catch (e) {}
-    }
-  };
-})();
+const SFX = new SoundFX();
+SFX.init();
+
 function coo() {
   if (!started || bird.cooT > 0) return;
   bird.cooT = 1.1;
@@ -2920,7 +2297,7 @@ function updateReportUI() {
 
 function animate(ts) {
   requestAnimationFrame(animate);
-  
+
   timer.update(ts);
   const dt = Math.min(0.05, timer.getDelta());
   updateLasers(dt);
@@ -2939,7 +2316,9 @@ function animate(ts) {
     updateFlock(dt);
     updateReportUI();
   } else {
-    updatePeople(dt); updateCars(dt); updateFlock(dt);
+    updatePeople(dt);
+    updateCars(dt);
+    updateFlock(dt);
   }
   updateRedPigeon(dt);
   updateSnackRespawn(dt);
@@ -2947,7 +2326,10 @@ function animate(ts) {
   if (!started) document.getElementById('report').classList.remove('show');
   for (let i = crumbs.length - 1; i >= 0; i--) {
     crumbs[i].t += dt;
-    if (crumbs[i].t > 30) { scene.remove(crumbs[i].mesh); crumbs.splice(i, 1); }
+    if (crumbs[i].t > 30) {
+      scene.remove(crumbs[i].mesh);
+      crumbs.splice(i, 1);
+    }
   }
   renderer.render(scene, camera);
 }
@@ -2958,7 +2340,7 @@ function toggleDev() {
   if (d.dataset.built !== '1') {
     d.dataset.built = '1';
     const rows = [['gravity', 4, 20], ['flapUp', 1, 6], ['flapFwd', 0, 5], ['flapCooldown', 0.1, 0.8],
-      ['liftCoef', 0.01, 0.15], ['drag', 0.05, 1.2], ['align', 0.5, 9], ['yawRate', 0.5, 5], ['pitchRate', 0.4, 4]];
+    ['liftCoef', 0.01, 0.15], ['drag', 0.05, 1.2], ['align', 0.5, 9], ['yawRate', 0.5, 5], ['pitchRate', 0.4, 4]];
     d.innerHTML = rows.map(([k, a, b]) =>
       `<label>${k}<input type=range min=${a} max=${b} step=0.005 value=${FLY[k]} data-k="${k}"><span>${FLY[k]}</span></label>`).join('');
     d.addEventListener('input', e => { const k = e.target.dataset.k; FLY[k] = parseFloat(e.target.value); e.target.nextElementSibling.textContent = FLY[k]; });

@@ -35,3 +35,19 @@ export const FOLD_LO = [
   [0.053, -0.040, -0.122],
   [0.035, -0.030, -0.180]
 ];
+
+export const FLY = {
+  gravity: 9.0,
+  flapUp: 3.0,
+  flapFwd: 1.7,
+  flapCooldown: 0.27,
+  liftCoef: 0.070,
+  maxLift: 14.0,
+  drag: 0.34,
+  align: 3.4,
+  yawRate: 2.2,
+  pitchRate: 1.7,
+  maxPitch: 0.95,
+  walkSpeed: 1.5,
+  takeoffUp: 4.2
+};
